@@ -8,10 +8,8 @@ include_directories(${OpenCV_INCLUDE_DIRS})
 
 include_directories(deps/argparse)
 
-add_executable(Mask main.cpp libs/fileUtils.h libs/cvUtils.h libs/MessageReplacer.h)
 add_executable(Test test.cpp libs/fileUtils.h libs/cvUtils.h libs/MessageReplacer.h)
 add_executable(Train train.cpp libs/fileUtils.h libs/cvUtils.h libs/MessageReplacer.h)
 
-target_link_libraries(Mask ${OpenCV_LIBS})
 target_link_libraries(Test ${OpenCV_LIBS})
 target_link_libraries(Train ${OpenCV_LIBS})
