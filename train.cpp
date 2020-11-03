@@ -17,13 +17,6 @@ const char loadingSteps[4] = { '\\', '|', '/', '-' };
 /// \param suffix
 void train (const string & datasetFolder, const string & outputFile, int suffix);
 
-/**
- * Handle console loading animation.
- * @param lastLoadingMessage
- * @param newMessage
- */
-void handleLoading (string & lastLoadingMessage, const string & newMessage);
-
 int main (const int argc, const char ** argv) {
     ArgumentParser argumentParser;
 
@@ -81,16 +74,3 @@ void train (const string & datasetFolder, const string & outputFile, int suffix)
     fout.close();
     assert(!fout.fail());
 }
-
-//void handleLoading (string & lastLoadingMessage, const string & newMessage)
-//{
-//    const auto lastMessageLength = lastLoadingMessage.length();
-//
-//    for (auto i = 0; i < lastMessageLength; i += 1)
-//    {
-//        cout << "\b" << flush;
-//    }
-//
-//    lastLoadingMessage = newMessage;
-//    cout << newMessage;
-//}

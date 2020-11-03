@@ -5,17 +5,20 @@
 #include "libs/cvUtils.h"
 #include "libs/MessageReplacer.h"
 #include <iterator>
+#include <math.h>
 
 using namespace std;
 using namespace cv;
 
 const char loadingSteps[4] = { '\\', '|', '/', '-' };
-void loadTrainedDataset (const string & trainedDataPath, vector<tuple<int, deque<int>>> & trainedData);
+void loadTrainedDataset (const string & trainedDataPath, vector<tuple<int, vector<int>>> & trainedData);
 void test(const string & datasetDirectoryPath, const string & trainedDataPath, int suffix);
 vector<string> explode(const string& s, const char& c);
 
 const int DISTANCE_SAD = 0;
-int getDistanceSAD(int (&a) [256], deque<int> b)
+const int DISTANCE_BHATTA = 1;
+
+float getDistanceSAD(int (&a) [256], const vector<int> & b)
 {
     int sum = 0;
 
@@ -27,16 +30,53 @@ int getDistanceSAD(int (&a) [256], deque<int> b)
 
     return sum;
 }
-int getDistance (int (&a) [256], deque<int> b, int method = DISTANCE_SAD)
+
+float mean (int (&a) [256]) {
+    auto mean = 0.0;
+
+    for (auto i : a) {
+        mean += i;
+    }
+
+    return mean / 256;
+}
+
+float mean (vector<int> a) {
+    auto mean = 0.0;
+
+    for (auto i : a) {
+        mean += i;
+    }
+
+    return (double)mean / a.size();
+}
+
+float getDistanceBhatta(int (&a) [256], const vector<int> &  b) {
+    auto aMean = mean(a);
+    auto bMean = mean(b);
+
+    auto score = 0.0;
+
+    for (auto i = 0; i < 256; i ++) {
+        score += sqrt(a[i] * b[i]);
+    }
+
+    score = sqrt(1 - (1 / sqrt(aMean * bMean * 256 * 256)) * score);
+
+    return score;
+}
+
+float getDistance (int (&a) [256], const vector<int>& b, int method = DISTANCE_SAD)
 {
     switch (method) {
         case DISTANCE_SAD:
             return getDistanceSAD(a, b);
+        case DISTANCE_BHATTA:
+            return getDistanceBhatta(a, b);
         default:
             return -1;
     }
 }
-
 
 int main (int argc, const char ** argv) {
     ArgumentParser argumentParser;
@@ -58,58 +98,65 @@ int main (int argc, const char ** argv) {
 }
 
 void test(const string &datasetDirectoryPath, const string &trainedDataPath, int suffix) {
+    vector<tuple<string, int>> distances;
+    distances.push_back(tuple<string, int>("SAD", DISTANCE_SAD));
+    distances.push_back(tuple<string, int>("BHATTA", DISTANCE_BHATTA));
+
     const auto images = findFilesInDirectory(datasetDirectoryPath);
     const auto imagesCount = images.size();
-    auto doneCount = 0;
-    auto foundCount = 0;
 
     MessageReplacer replacer;
 
-    vector<tuple<int, deque<int>>> trainedData;
+    vector<tuple<int, vector<int>>> trainedData;
     loadTrainedDataset(trainedDataPath, trainedData);
 
-    for (const auto & imageFolder : images)
+    for (auto distanceTuple : distances)
     {
-        Mat image;
-        image = imread(imageFolder, IMREAD_GRAYSCALE);
+        auto doneCount = 0;
+        auto foundCount = 0;
+        for (const auto & imageFolder : images)
+        {
+            Mat image;
+            image = imread(imageFolder, IMREAD_GRAYSCALE);
 
-        int histogram[256];
-        computeHistogram(image, histogram);
+            int histogram[256];
+            computeHistogram(image, histogram);
 
-        int minDistance = INT_MAX;
-        int foundSuffix = -1;
+            float minDistance = numeric_limits<float>::max();
+            int foundSuffix = -1;
 
-        for (auto trainedDataLine : trainedData) {
-            auto type = get<0>(trainedDataLine);
-            auto trainedHistogram = get<1>(trainedDataLine);
-            const auto distance = getDistance(histogram, trainedHistogram);
+            for (auto trainedDataLine : trainedData) {
+                auto type = get<0>(trainedDataLine);
+                auto trainedHistogram = get<1>(trainedDataLine);
+                const auto distance = getDistance(histogram, trainedHistogram, get<1>(distanceTuple));
 
-            if (distance < minDistance) {
-                minDistance = distance;
-                foundSuffix = type;
+                if (distance < minDistance) {
+                    minDistance = distance;
+                    foundSuffix = type;
+                }
             }
-        }
 
-        if (foundSuffix == suffix) {
-            foundCount ++;
-        }
+            if (foundSuffix == suffix) {
+                foundCount ++;
+            }
 
-        doneCount ++;
-        const auto donePercent = (int) round((float) doneCount / (float) imagesCount * 100);
-        string loadingCharacter(1, loadingSteps[doneCount % 4]);
-        const auto percentMessage = loadingCharacter + " " + to_string(donePercent) + "%";
+            doneCount ++;
+            const auto donePercent = (int) round((float) doneCount / (float) imagesCount * 100);
+            string loadingCharacter(1, loadingSteps[doneCount % 4]);
+            const auto percentMessage = loadingCharacter + " " + to_string(donePercent) + "%";
 //        cout << percentMessage << endl;
-        replacer.replace(percentMessage);
+            replacer.replace(percentMessage);
+        }
+
+        replacer.clear();
+
+        const auto foundPercent = (int) round((float) foundCount / (float) imagesCount * 100);
+        const auto foundPercentMessage = to_string(foundPercent) + "% found with " + get<0>(distanceTuple);
+
+        cout << foundPercentMessage << endl;
     }
-
-    replacer.clear();
-
-    const auto foundPercent = (int) round((float) foundCount / (float) imagesCount * 100);
-    const auto foundPercentMessage = to_string(foundPercent) + "% found!";
-
-    cout << foundPercentMessage << endl;
 }
-void loadTrainedDataset (const string & trainedDataPath, vector<tuple<int, deque<int>>> & trainedData) {
+void loadTrainedDataset (const string & trainedDataPath, vector<tuple<int, vector<int>>> & trainedData) {
     fstream trainingStream;
     trainingStream.open(trainedDataPath, ios::in);
 
@@ -117,20 +164,20 @@ void loadTrainedDataset (const string & trainedDataPath, vector<tuple<int, deque
         string line;
         while (getline(trainingStream, line)) {
             const auto stringValues = explode(line, ' ');
-            auto queue = deque<int>();
+            auto queue = vector<int>();
 //            int lineHistogram[256];
 
-            for (int i = 0; i < stringValues.size() - 2; i += 1) {
+            for (int i = 0; i < stringValues.size() - 1; i += 1) {
                 const auto stringValue = stringValues[i];
                 const auto intValue = stoi(stringValue);
-                queue.push_front(intValue);
+                queue.push_back(intValue);
 //                lineHistogram[i] = intValue;
             }
 
             const auto typeString = stringValues[stringValues.size() - 1];
             int type = stoi(typeString);
 
-            tuple<int, deque<int>> t = make_tuple(type, queue);
+            tuple<int, vector<int>> t = make_tuple(type, queue);
             trainedData.push_back(t);
         }
     }

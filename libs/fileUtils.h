@@ -1,6 +1,7 @@
 #include <iostream>
 #include <experimental/filesystem>
 #include <vector>
+#include <string>
 
 namespace fs = std::filesystem;
 using namespace std;
@@ -19,6 +20,12 @@ vector<string> findFilesInDirectory (const string & directoryPath)
     vector<string> foundFiles;
 
     for (const auto & entry : fs::directory_iterator(directoryPath)) {
+        string extension = entry.path().extension().string();
+
+        if (extension != ".jpg") {
+            continue;
+        }
+
         const string absoluteFilePath = fs::absolute(entry.path());
         foundFiles.push_back(absoluteFilePath);
     }
