@@ -4,17 +4,18 @@
 #include "libs/fileUtils.h"
 #include "libs/cvUtils.h"
 #include "libs/MessageReplacer.h"
+#include <iterator>
 
 using namespace std;
 using namespace cv;
 
 const char loadingSteps[4] = { '\\', '|', '/', '-' };
-void loadTrainedDataset (const string & trainedDataPath, vector<tuple<int, int *>> & trainedData);
+void loadTrainedDataset (const string & trainedDataPath, vector<tuple<int, deque<int>>> & trainedData);
 void test(const string & datasetDirectoryPath, const string & trainedDataPath, int suffix);
 vector<string> explode(const string& s, const char& c);
 
 const int DISTANCE_SAD = 0;
-int getDistanceSAD(int (&a) [256], int (&b) [256])
+int getDistanceSAD(int (&a) [256], deque<int> b)
 {
     int sum = 0;
 
@@ -26,7 +27,7 @@ int getDistanceSAD(int (&a) [256], int (&b) [256])
 
     return sum;
 }
-int getDistance (int (&a) [256], int (&b) [256], int method = DISTANCE_SAD)
+int getDistance (int (&a) [256], deque<int> b, int method = DISTANCE_SAD)
 {
     switch (method) {
         case DISTANCE_SAD:
@@ -64,6 +65,9 @@ void test(const string &datasetDirectoryPath, const string &trainedDataPath, int
 
     MessageReplacer replacer;
 
+    vector<tuple<int, deque<int>>> trainedData;
+    loadTrainedDataset(trainedDataPath, trainedData);
+
     for (const auto & imageFolder : images)
     {
         Mat image;
@@ -72,35 +76,17 @@ void test(const string &datasetDirectoryPath, const string &trainedDataPath, int
         int histogram[256];
         computeHistogram(image, histogram);
 
-        fstream trainingStream;
-        trainingStream.open(trainedDataPath, ios::in);
-
         int minDistance = INT_MAX;
         int foundSuffix = -1;
 
-        if (trainingStream.is_open()) {
-            string line;
+        for (auto trainedDataLine : trainedData) {
+            auto type = get<0>(trainedDataLine);
+            auto trainedHistogram = get<1>(trainedDataLine);
+            const auto distance = getDistance(histogram, trainedHistogram);
 
-            while (getline(trainingStream, line)) {
-                const auto stringValues = explode(line, ' ');
-                int lineHistogram[256];
-
-                for (int i = 0; i < stringValues.size() - 2; i += 1) {
-                    const auto stringValue = stringValues[i];
-                    const auto intValue = stoi(stringValue);
-                    lineHistogram[i] = intValue;
-                }
-
-                const auto typeString = stringValues[stringValues.size() - 1];
-                const auto type = stoi(typeString);
-
-                // Calculate distance
-                const auto distance = getDistance(histogram, lineHistogram);
-
-                if (distance < minDistance) {
-                    minDistance = distance;
-                    foundSuffix = type;
-                }
+            if (distance < minDistance) {
+                minDistance = distance;
+                foundSuffix = type;
             }
         }
 
@@ -112,19 +98,18 @@ void test(const string &datasetDirectoryPath, const string &trainedDataPath, int
         const auto donePercent = (int) round((float) doneCount / (float) imagesCount * 100);
         string loadingCharacter(1, loadingSteps[doneCount % 4]);
         const auto percentMessage = loadingCharacter + " " + to_string(donePercent) + "%";
+//        cout << percentMessage << endl;
         replacer.replace(percentMessage);
-
-        trainingStream.close();
     }
 
     replacer.clear();
 
     const auto foundPercent = (int) round((float) foundCount / (float) imagesCount * 100);
-    const auto foundPercentMessage = to_string(foundPercent) + "%";
+    const auto foundPercentMessage = to_string(foundPercent) + "% found!";
 
     cout << foundPercentMessage << endl;
 }
-void loadTrainedDataset (const string & trainedDataPath, vector<tuple<int, int*>> & trainedData) {
+void loadTrainedDataset (const string & trainedDataPath, vector<tuple<int, deque<int>>> & trainedData) {
     fstream trainingStream;
     trainingStream.open(trainedDataPath, ios::in);
 
@@ -132,18 +117,20 @@ void loadTrainedDataset (const string & trainedDataPath, vector<tuple<int, int*>
         string line;
         while (getline(trainingStream, line)) {
             const auto stringValues = explode(line, ' ');
-            int lineHistogram[256];
+            auto queue = deque<int>();
+//            int lineHistogram[256];
 
             for (int i = 0; i < stringValues.size() - 2; i += 1) {
                 const auto stringValue = stringValues[i];
                 const auto intValue = stoi(stringValue);
-                lineHistogram[i] = intValue;
+                queue.push_front(intValue);
+//                lineHistogram[i] = intValue;
             }
 
             const auto typeString = stringValues[stringValues.size() - 1];
             int type = stoi(typeString);
 
-            tuple<int, int *> t = make_tuple(type, lineHistogram);
+            tuple<int, deque<int>> t = make_tuple(type, queue);
             trainedData.push_back(t);
         }
     }
